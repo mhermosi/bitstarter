@@ -8,8 +8,9 @@ app.get('/', function(request, response) {
   var fs = require('fs');
   fs.readFile('index.html', function(err, data) {
       if(err) throw err;
-      var buf = new Buffer(data.length);
-      response.send(buf.toString());
+      var len = data.length;
+      var buf = new Buffer(len);
+      response.send(buf.toString('utf8', 0. len));
   });
 });
 
