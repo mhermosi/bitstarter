@@ -20,7 +20,6 @@ References:
    - https://developer.mozilla.org/en-US/docs/JSON
    - https://developer.mozilla.org/en-US/docs/JSON#JSON_in_Firefox_2
 */
-
 var fs = require('fs');
 var rest = require('restler');
 
@@ -28,21 +27,6 @@ var program = require('commander');
 var cheerio = require('cheerio');
 var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
-var data = '';
-
-var assertUrlExists = function(url) {
-   var instr = url.toString();
-   rest.get(instr).on('complete', function(result) {
-      if(result instanceof Error) {
-         console.log("An error happened with the url: %s, %s", instr, result.message);
-         process.exit(1);
-      } else {
-         data = result;
-         return instr;
-      }
-   });
-   
-}
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
@@ -54,11 +38,7 @@ var assertFileExists = function(infile) {
 };
 
 var cheerioHtmlFile = function(htmlfile) {
-    if( (htmlfile.indexOf('http://') === 0) ) {
-       return cheerio.load(data);
-    } else {
-       return cheerio.load(fs.readFileSync(htmlfile));
-    } 
+    return cheerio.load(fs.readFileSync(htmlfile));
 };
 
 var loadChecks = function(checksfile) {
@@ -82,18 +62,49 @@ var clone = function(fn) {
     return fn.bind({});
 };
 
+
+var buildfn = function(checksfile) {
+   var response2var = function(result) {
+      if(result instanceof Error) {
+         console.error('Error: %s', result.message);
+         process.exit(1);
+      } else {
+         $ = cheerio.load(result);
+         var checks = loadChecks(checksfile).sort();
+         var out = {};
+         for(var ii in checks) {
+            var present = $(checks[ii]).length > 0;
+            out[checks[ii]] = present;
+         }
+         var outJson = JSON.stringify(out, null, 4);
+         console.log(outJson);    
+      }
+   };
+   return response2var;
+}
+
+var runUrlBased = function(url, checks) {
+   var response2var = buildfn(checks);
+   rest.get(url).on('complete', response2var).on('fail', function(data, response) {
+      console.error('Error: %s', response.message);
+      process.exit(1);
+   });
+}
 if(require.main == module) {
     program
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
         .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
-        .option('-u, --url <url>', 'URL to be tested', clone(assertUrlExists))
+        .option('-u, --url <url>', 'URL to be tested')
         .parse(process.argv);
 
-    var source = (program.url) ? program.url : program.file;
-   
-    var checkJson = checkHtmlFile(source, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+    if(program.url) {
+       runUrlBased(program.url, program.checks);
+    } else {
+       var checkJson = checkHtmlFile(program.file, program.checks);
+       var outJson = JSON.stringify(checkJson, null, 4);
+       console.log(outJson);
+    }
+    
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
